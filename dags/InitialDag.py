@@ -19,6 +19,8 @@ def init_process_etl():
         """
         init_kafka()
 
+    create_kafka_topics()
+
 
 process_init_dag = init_process_etl()
 
