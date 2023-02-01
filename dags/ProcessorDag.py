@@ -1,28 +1,25 @@
 import os
-
-from pyspark import SparkContext
-from pyspark.sql.types import StructType, StructField, StringType
-from pyspark.streaming import StreamingContext
-from pyspark.sql import SparkSession
-
+from airflow.decorators import dag, task
+import pendulum
+from src.stream import read_stream_from_kafka
 
 BOOTSTRAP_SERVERS = os.getenv('BOOTSTRAP_SERVERS', default=['kafka:9092'])
 TOPIC_NAME = os.getenv('TOPIC_NAME', default=None)
-spark = SparkSession.builder.master('local').getOrCreate()
-struct = StructType(
-    [
-        StructField("text", StringType()),
-        StructField("favorites")
-    ]
+
+
+@dag(
+    dag_id="process_data",
+    schedule_interval="* * * * *",
+    start_date=pendulum.datetime(2023, 1, 1, tz="UTC"),
+    catchup=False,
+    is_paused_upon_creation=False
 )
+def process_data_etl():
+    @task
+    def get_stream_data():
+        read_stream_from_kafka()
+
+    get_stream_data()
 
 
-
-def read_stream_from_kafka():
-    df = spark\
-        .readStream\
-        .format('kafka')\
-        .option('kafka.bootstrap.servers', BOOTSTRAP_SERVERS)\
-        .option('subscribe', TOPIC_NAME)\
-        .load()
-
+data_process_dag = process_data_etl()
