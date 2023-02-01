@@ -99,6 +99,8 @@ services:
     entrypoint: spark-submit --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.3.0 /src/stream.py
     volumes:
       - ./src:/src:rw
+    depends_on:
+      - kafka-server
 
   spark-worker:
     build: spark-build
@@ -111,6 +113,8 @@ services:
       - SPARK_WORKER_CORES=4
     volumes:
       - ./src:/src:rw
+    depends_on:
+      - spark-master
 
   kafka-visualizer:
     image: obsidiandynamics/kafdrop
