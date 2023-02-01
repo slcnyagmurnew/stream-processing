@@ -13,34 +13,37 @@ TOPIC_NAME = os.getenv("TOPIC_NAME", default=None)
 
 def init_kafka():
     try:
+
         with open('/opt/airflow/dags/config.json', 'r') as f:
             conf = ujson.load(f)
         f.close()
         adapter.create_topics(bootstrap_servers=BOOTSTRAP_SERVERS, topic_config_list=conf['topic_configs'])
-        logging.info('Topics created successfully..')
     except Exception as err:
         logging.error(err)
 
 
-def send_data(data) -> None:
+def send_data(loc_id, data, partition) -> None:
     logging.info("Data obtained from API resource..")
     extracted_data = {
+        "id": str(loc_id),
         "time": data["current"]["time"],
         "temperature": data["current"]["temperature"],
         "feelsLikeTemp": data["current"]["feelsLikeTemp"],
+        "relHumidity": data["current"]["relHumidity"],
         "windSpeed": data["current"]["windSpeed"],
         "windDir": data["current"]["windDir"],
         "pressure": data["current"]["pressure"],
         "symbolPhrase": data["current"]["symbolPhrase"]
     }
     try:
-        adapter.produce(topic_name=TOPIC_NAME, data=extracted_data, bootstrap_servers=BOOTSTRAP_SERVERS)
+        adapter.produce(topic_name=TOPIC_NAME, data=extracted_data,
+                        bootstrap_servers=BOOTSTRAP_SERVERS, partition=partition)
         logging.info('Data sent to Kafka broker..')
     except Exception as err:
         logging.error(err)
 
 
-def get_api_data() -> str:
+def get_api_data(location_id) -> str:
     # print("get data from api")
     # url = "https://weatherapi-com.p.rapidapi.com/current.json"
     #
@@ -54,7 +57,8 @@ def get_api_data() -> str:
     # response = requests.request("GET", url, headers=headers, params=querystring)
     # print(f"response: {response.text}")
     # return response.json()
-    url = "https://foreca-weather.p.rapidapi.com/current/100745044"
+    # istanbul 100745044 izmir 100311046 ankara 100323786
+    url = f"https://foreca-weather.p.rapidapi.com/current/{location_id}"
 
     querystring = {"alt": "0", "tempunit": "C", "windunit": "MS", "tz": "Europe/Istanbul", "lang": "en"}
 
