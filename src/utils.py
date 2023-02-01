@@ -7,32 +7,66 @@ import logging
 from src.KafkaAdapter import KafkaAdapter
 
 adapter = KafkaAdapter()
-bootstrap_servers = os.getenv("BOOTSTRAP_SERVERS", default=["kafka:9092"])
+BOOTSTRAP_SERVERS = os.getenv("BOOTSTRAP_SERVERS", default=["kafka:9092"])
+TOPIC_NAME = os.getenv("TOPIC_NAME", default=None)
 
 
 def init_kafka():
     try:
-        with open('config.json', 'r') as f:
+        with open('/opt/airflow/dags/config.json', 'r') as f:
             conf = ujson.load(f)
         f.close()
-        adapter.create_topics(bootstrap_servers=bootstrap_servers, topic_config_list=conf['topic_configs'])
+        adapter.create_topics(bootstrap_servers=BOOTSTRAP_SERVERS, topic_config_list=conf['topic_configs'])
         logging.info('Topics created successfully..')
     except Exception as err:
         logging.error(err)
 
 
-def get_api_data() -> str:
-    url = "https://weatherapi-com.p.rapidapi.com/current.json"
+def send_data(data) -> None:
+    logging.info("Data obtained from API resource..")
+    extracted_data = {
+        "time": data["current"]["time"],
+        "temperature": data["current"]["temperature"],
+        "feelsLikeTemp": data["current"]["feelsLikeTemp"],
+        "windSpeed": data["current"]["windSpeed"],
+        "windDir": data["current"]["windDir"],
+        "pressure": data["current"]["pressure"],
+        "symbolPhrase": data["current"]["symbolPhrase"]
+    }
+    try:
+        adapter.produce(topic_name=TOPIC_NAME, data=extracted_data, bootstrap_servers=BOOTSTRAP_SERVERS)
+        logging.info('Data sent to Kafka broker..')
+    except Exception as err:
+        logging.error(err)
 
-    querystring = {"q": "Istanbul"}
+
+def get_api_data() -> str:
+    # print("get data from api")
+    # url = "https://weatherapi-com.p.rapidapi.com/current.json"
+    #
+    # querystring = {"q": "Istanbul"}
+    #
+    # headers = {
+    #     # secrets
+    #     "X-RapidAPI-Key": os.getenv('X-RapidAPI-Key'),
+    #     "X-RapidAPI-Host": os.getenv('X-RapidAPI-Host')
+    # }
+    # response = requests.request("GET", url, headers=headers, params=querystring)
+    # print(f"response: {response.text}")
+    # return response.json()
+    url = "https://foreca-weather.p.rapidapi.com/current/100745044"
+
+    querystring = {"alt": "0", "tempunit": "C", "windunit": "MS", "tz": "Europe/Istanbul", "lang": "en"}
 
     headers = {
-        # secrets
         "X-RapidAPI-Key": os.getenv('X-RapidAPI-Key'),
         "X-RapidAPI-Host": os.getenv('X-RapidAPI-Host')
     }
+
     response = requests.request("GET", url, headers=headers, params=querystring)
-    return response.text
+
+    print(response.text)
+    return response.json()
 
 
 def convert():
