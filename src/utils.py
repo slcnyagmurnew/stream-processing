@@ -44,19 +44,6 @@ def send_data(loc_id, data, partition) -> None:
 
 
 def get_api_data(location_id) -> str:
-    # print("get data from api")
-    # url = "https://weatherapi-com.p.rapidapi.com/current.json"
-    #
-    # querystring = {"q": "Istanbul"}
-    #
-    # headers = {
-    #     # secrets
-    #     "X-RapidAPI-Key": os.getenv('X-RapidAPI-Key'),
-    #     "X-RapidAPI-Host": os.getenv('X-RapidAPI-Host')
-    # }
-    # response = requests.request("GET", url, headers=headers, params=querystring)
-    # print(f"response: {response.text}")
-    # return response.json()
     # istanbul 100745044 izmir 100311046 ankara 100323786
     url = f"https://foreca-weather.p.rapidapi.com/current/{location_id}"
 
