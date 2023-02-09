@@ -1,5 +1,9 @@
 kafka_python==2.0.2
 pendulum==2.1.2
+prophet==1.1.2
 pyspark==3.3.1
 requests==2.28.2
 ujson==5.7.0
+pyarrow==9.0.0
+pandas==1.2.1
+redis==4.4.2
