@@ -1,5 +1,5 @@
 import pendulum
-from src.utils import init_kafka
+from src.ops import init_kafka, init_redis
 from airflow.operators.python import PythonOperator
 from airflow import DAG
 from airflow.operators.trigger_dagrun import TriggerDagRunOperator
@@ -12,13 +12,20 @@ with DAG(
     catchup=False,
     is_paused_upon_creation=False
 ) as dag:
-    """
-    create desired kafka topics using config file
-    :return:
-    """
+    location_list = {"ankara": 100323786, "istanbul": 100745044, "izmir": 100311046}  # to config maybe
+
     create_kafka_topics = PythonOperator(
         task_id="init_kafka_topics",
         python_callable=init_kafka,
+        dag=dag
+    )
+
+    create_redis_ts_metadata = PythonOperator(
+        task_id="init_redis_ts",
+        python_callable=init_redis,
+        op_kwargs={
+            "location_lst": location_list
+        },
         dag=dag
     )
 
@@ -28,7 +35,7 @@ with DAG(
         dag=dag,
     )
 
-    create_kafka_topics >> trigger
+    [create_kafka_topics, create_redis_ts_metadata] >> trigger
 
 
 
