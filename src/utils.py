@@ -1,49 +1,42 @@
 import csv
 import os
-
 import requests
 import ujson
 import logging
-from src.KafkaAdapter import KafkaAdapter
-
-adapter = KafkaAdapter()
-BOOTSTRAP_SERVERS = os.getenv("BOOTSTRAP_SERVERS", default=["kafka:9092"])
-TOPIC_NAME = os.getenv("TOPIC_NAME", default=None)
+import time
+import datetime
 
 
-def init_kafka():
+def preprocess_data(loc_id, data):
+    """
+
+    :param loc_id:
+    :param data:
+    :return:
+    """
+    logging.info("Data preprocess started")
     try:
-
-        with open('/opt/airflow/dags/config.json', 'r') as f:
-            conf = ujson.load(f)
-        f.close()
-        adapter.create_topics(bootstrap_servers=BOOTSTRAP_SERVERS, topic_config_list=conf['topic_configs'])
-    except Exception as err:
-        logging.error(err)
-
-
-def send_data(loc_id, data, partition) -> None:
-    logging.info("Data obtained from API resource..")
-    extracted_data = {
-        "id": str(loc_id),
-        "time": data["current"]["time"],
-        "temperature": data["current"]["temperature"],
-        "feelsLikeTemp": data["current"]["feelsLikeTemp"],
-        "relHumidity": data["current"]["relHumidity"],
-        "windSpeed": data["current"]["windSpeed"],
-        "windDir": data["current"]["windDir"],
-        "pressure": data["current"]["pressure"],
-        "symbolPhrase": data["current"]["symbolPhrase"]
-    }
-    try:
-        adapter.produce(topic_name=TOPIC_NAME, data=extracted_data,
-                        bootstrap_servers=BOOTSTRAP_SERVERS, partition=partition)
-        logging.info('Data sent to Kafka broker..')
-    except Exception as err:
-        logging.error(err)
+        return {
+            "id": str(loc_id),
+            "time": convert_to_timestamp(data["current"]["time"][0:16]),
+            # "temperature": data["current"]["temperature"],
+            "feelsLikeTemp": data["current"]["feelsLikeTemp"],
+            "relHumidity": data["current"]["relHumidity"]
+            # "windSpeed": data["current"]["windSpeed"]
+            # "windDir": data["current"]["windDir"],
+            # "pressure": data["current"]["pressure"],
+            # "symbolPhrase": data["current"]["symbolPhrase"]
+        }
+    except Exception:
+        raise KeyError
 
 
 def get_api_data(location_id) -> str:
+    """
+
+    :param location_id:
+    :return:
+    """
     # istanbul 100745044 izmir 100311046 ankara 100323786
     url = f"https://foreca-weather.p.rapidapi.com/current/{location_id}"
 
@@ -58,6 +51,16 @@ def get_api_data(location_id) -> str:
 
     print(response.text)
     return response.json()
+
+
+def convert_to_timestamp(data: str):
+    """
+
+    :param data:
+    :return:
+    """
+    return int(time.mktime(datetime.datetime.strptime(data,
+                                                      "%Y-%m-%dT%H:%M").timetuple()))
 
 
 def convert():
@@ -75,5 +78,3 @@ def convert():
         if i == row_count:
             break
         i += 1
-
-
