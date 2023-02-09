@@ -1,41 +1,49 @@
-import logging
-import os.path
-from airflow.decorators import dag, task
+import time
 import pendulum
-# from airflow.sensors.external_task import ExternalTaskSensor
-from src.utils import get_api_data, send_data
-# from airflow.providers.postgres.operators.postgres import PostgresOperator
+from src.utils import get_api_data
+from src.ops import redis_connection, send_to_redis, send_to_kafka
+from airflow.operators.python import PythonOperator
+from airflow import DAG
 
 
-@dag(
-    dag_id="generate_data",
+with DAG(
+    "generate_data",
     schedule_interval="* * * * *",
     start_date=pendulum.datetime(2023, 1, 1, tz="UTC"),
     catchup=False,
     is_paused_upon_creation=False
-)
-def generate_data_etl():
+) as dag:
+    location_list = {"ankara": 100323786, "istanbul": 100745044, "izmir": 100311046}  # to config maybe
+    current_data = []
+    for location in list(location_list.values()):
+        current_data.append(get_api_data(location_id=location))
+        time.sleep(0.5)
 
-    location_list = [100323786, 100745044, 100311046]
+    check_redis_connection = PythonOperator(
+        python_callable=redis_connection,
+        task_id="check_redis_connection",
+        dag=dag
+    )
 
-    # @task.sensor
-    # def wait_initialization():
-    #     return ExternalTaskSensor(task_id="wait_upstream", external_dag_id="init_process", external_task_id=None)
+    generate_data_to_kafka = PythonOperator(
+        task_id="send_data_to_kafka",
+        python_callable=send_to_kafka,
+        op_kwargs={
+            "location_data": current_data,
+            "location_lst": location_list
+        },
+        dag=dag
+    )
 
-    # @task
-    # def get_weather_api_data():
-    #     print("in weather api")
-    #     return get_api_data()
+    generate_data_to_redis = PythonOperator(
+        task_id="send_data_to_redis",
+        python_callable=send_to_redis,
+        op_kwargs={
+            "location_data": current_data,
+            "location_lst": location_list
+        },
+        dag=dag
+    )
 
-    @task
-    def send_to_kafka():
-        # print(f"kafka data: {obj}")
-        for p, location in enumerate(location_list):
-            data = get_api_data(location_id=location)
-            print(f"api data: {data} partition: {p}")
-            send_data(loc_id=location, data=data, partition=p)
+    check_redis_connection >> [generate_data_to_kafka, generate_data_to_redis]
 
-    send_to_kafka()
-
-
-data_send_dag = generate_data_etl()
