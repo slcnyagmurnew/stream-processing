@@ -1,7 +1,7 @@
 x-common:
   &common
-  #  build:
-  #    context: .
+#  build:
+#    context: .
   image: airflow/custom:1.0
   user: "${AIRFLOW_UID}:0"
   env_file:
@@ -131,10 +131,17 @@ services:
       - kafka-server
 
   redis:
-    image: redis:latest
+    image: redis/redis-stack-server
     container_name: redis
     ports:
       - "6379:6379"
+
+  redis-insight:
+    image: redislabs/redisinsight
+    container_name: redis_insight
+    ports:
+      - "8001:8001"
+
 
 #  cassandra:
 #    image: 'bitnami/cassandra:latest'
