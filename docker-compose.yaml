@@ -9,8 +9,7 @@ x-common:
   volumes:
     - ./dags:/opt/airflow/dags
     - ./logs:/opt/airflow/logs
-    - ./plugins:/opt/airflow/plugins
-    #    - ./tweets:/opt/airflow/tweets
+    - ./cl_logs:/opt/airflow/cl_logs
     - ./src:/opt/airflow/src
     - /var/run/docker.sock:/var/run/docker.sock
 
@@ -26,8 +25,9 @@ services:
   postgres:
     image: postgres:13
     container_name: postgres_container
-    volumes:
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+#    volumes:
+#      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+#      - ./postgres-data:/var/lib/postgresql/data
     ports:
       - "5434:5432"
     healthcheck:
@@ -88,11 +88,13 @@ services:
       - KAFKA_CFG_ZOOKEEPER_CONNECT=zookeeper:2181
       - ALLOW_PLAINTEXT_LISTENER=yes
       - KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE=false
+      - KAFKA_CFG_MAX_POLL_INTERVAL_MS=630000
     depends_on:
       - zookeeper
 
   spark-master:
-    build: spark-build
+#    build: spark-build
+    image: stream-processing_spark-master:latest
     container_name: spark_master
     env_file:
       - .env
@@ -106,7 +108,8 @@ services:
       - kafka-server
 
   spark-worker:
-    build: spark-build
+#    build: spark-build
+    image: stream-processing_spark-master:latest
     container_name: spark_worker
     environment:
       - SPARK_MODE=worker
@@ -135,6 +138,8 @@ services:
     container_name: redis
     ports:
       - "6379:6379"
+#    volumes:
+#      - ./redis-data:/data
 
   redis-insight:
     image: redislabs/redisinsight
