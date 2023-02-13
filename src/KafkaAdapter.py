@@ -1,4 +1,3 @@
-import kafka.errors
 from kafka import KafkaProducer, KafkaConsumer, KafkaAdminClient
 from kafka.admin import NewTopic, NewPartitions
 from typing import Dict, List
