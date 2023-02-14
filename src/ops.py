@@ -2,8 +2,8 @@ from redis import Redis
 import os
 import ujson
 from redis.exceptions import ConnectionError
-from src.utils import preprocess_data
 import logging
+from src.utils import get_config, convert_to_timestamp
 from src.KafkaAdapter import KafkaAdapter
 
 adapter = KafkaAdapter()
@@ -19,11 +19,11 @@ r = Redis(
 # TODO add kafka connection check
 
 
-def retrieve_redis_data(data_type="temperature"):
+def retrieve_redis_data(data_type="unq_dst_ip") -> dict:
     """
-    Get redis temperature data from all provinces
-    :param data_type: use later for another data types like humidity etc.
-                        default=temperature
+    Get related Redis data with using data type parameter
+    :param data_type: use later for another data types like frequency etc.
+                        default=unq_dst_ip
     :return: json data object
     """
     logging.info(f"Get all of the values from type of {data_type} from earliest to latest...")
@@ -31,6 +31,9 @@ def retrieve_redis_data(data_type="temperature"):
     mrange_reply = r.ts().mrange(0, "+", mrange_filters, with_labels=True)
     # print(type(mrange_reply), mrange_reply)
     print(f"Result: {ujson.dumps(mrange_reply, indent=4)}")
+    # with open("/opt/airflow/src/result.json", "w") as f:
+    #     ujson.dump(mrange_reply, f)
+    # f.close()
     return mrange_reply
 
 
@@ -39,89 +42,73 @@ def init_kafka():
     Initialize Kafka topics and its configurations
     :return:
     """
+    logging.info("Kafka initialization started..")
+    conf = get_config()
     try:
-        with open('/opt/airflow/dags/config.json', 'r') as f:
-            conf = ujson.load(f)
-        f.close()
         adapter.create_topics(bootstrap_servers=BOOTSTRAP_SERVERS, topic_config_list=conf['topic_configs'])
     except Exception as err:
         logging.error(err)
 
 
-def send_to_kafka(location_lst, location_data):
+def send_to_kafka(data) -> None:
     """
-
-    :param location_lst:
-    :param location_data:
+    Send one log data to Kafka service
+    :param data: log data
+        example ==> {
+          "src_ip": "60.73.131.213",
+          "unq_dst_ip": "3",
+          "allow": "17",
+          "drop": "0",
+          "frequency": "17",
+          "pkts_sent": "133",
+          "pkts_received": "114",
+          "bytesin": "18543",
+          "bytesout": "68942",
+          "unq_dst_port": "2",
+          "timestamp": "2022-01-03 08:00:00"
+        }
     :return:
     """
-    location_ids = list(location_lst.values())
-    for p, data in enumerate(location_data):
-        print(f"Api data for Kafka: {data} partition: {p}")
-        each_data_to_kafka(loc_id=location_ids[p], data=data, partition=p)
-
-
-def each_data_to_kafka(loc_id, data, partition) -> None:
-    """
-
-    :param loc_id:
-    :param data:
-    :param partition:
-    :return:
-    """
-    logging.info("Data obtained from API resource..")
-    extracted_data = preprocess_data(loc_id, data)
+    logging.info(f"Data obtained from API resource for Kafka.. {data}")
+    conf = get_config()
     try:
-        adapter.produce(topic_name=TOPIC_NAME, data=extracted_data,
+        partition = conf["source_partition_map"][data["src_ip"]]
+        adapter.produce(topic_name=TOPIC_NAME, data=data,
                         bootstrap_servers=BOOTSTRAP_SERVERS, partition=partition)
         logging.info('Data sent to Kafka broker..')
     except Exception as err:
         logging.error(err)
 
 
-def each_data_to_redis(location_name, data) -> None:
+def init_redis(data_type="unq_dst_ip"):
     """
-    Each of API data to Redis
-    Preprocessing is not necessary but data time must be in timestamp format
-    :param location_name:
+    Initialize Redis Time Series DB keys with source ips
+    :return:
+    """
+    conf = get_config()
+    ip_list = list(conf["source_partition_map"].keys())
+    for i, ip in enumerate(ip_list):
+        labels = {"srcIP": ip,
+                  "dataType": data_type}
+        src_key = f"{data_type}_{ip}"
+        r.ts().create(key=src_key, labels=labels)
+        logging.info(f"TS created in Redis for {src_key}")
+
+
+def send_to_redis(data, data_type: str):
+    """
+    Send collected API data to Redis database
+    :param data_type:
     :param data:
     :return:
     """
-    extracted_data = preprocess_data(location_name, data)
+    src_key = f"{data_type}_{data['src_ip']}"
+    logging.info(f"Data obtained from API resource for Redis.. {data}")
     try:
-        r.ts().add(key=location_name, timestamp=extracted_data["time"], value=extracted_data["feelsLikeTemp"])
-        logging.info(f'Data sent to Redis: {location_name}..')
+        r.ts().add(key=src_key, timestamp=convert_to_timestamp(data["timestamp"]), value=data[data_type])
+        logging.info(f'Data sent to Redis: {src_key}..')
     except Exception as err:
         logging.error(err)
-
-
-def init_redis(location_lst: dict):
-    """
-
-    :param location_lst:
-    :return:
-    """
-    location_names = list(location_lst.keys())
-    location_ids = list(location_lst.values())
-    for i, loc in enumerate(location_ids):
-        labels = {"locId": str(loc),
-                  "dataType": "temperature"}
-        temperature_key = location_names[i]
-        r.ts().create(key=temperature_key, labels=labels)
-        logging.info(f"TS created in Redis for {temperature_key}")
-
-
-def send_to_redis(location_lst: dict, location_data):
-    """
-    Send collected API data to Redis database
-    :param location_lst: unique location name list
-    :param location_data: current location data
-    :return:
-    """
-    location_names = list(location_lst.keys())
-    for p, data in enumerate(location_data):
-        logging.info(f"Data for Redis: {data}")
-        each_data_to_redis(location_name=location_names[p], data=data)
 
 
 def redis_connection():
