@@ -1,7 +1,7 @@
 x-common:
   &common
-#  build:
-#    context: .
+  build:
+    context: .
   image: airflow/custom:1.0
   user: "${AIRFLOW_UID}:0"
   env_file:
@@ -25,8 +25,8 @@ services:
   postgres:
     image: postgres:13
     container_name: postgres_container
-#    volumes:
-#      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    volumes:
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
 #      - ./postgres-data:/var/lib/postgresql/data
     ports:
       - "5434:5432"
@@ -88,18 +88,18 @@ services:
       - KAFKA_CFG_ZOOKEEPER_CONNECT=zookeeper:2181
       - ALLOW_PLAINTEXT_LISTENER=yes
       - KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE=false
-      - KAFKA_CFG_MAX_POLL_INTERVAL_MS=630000
+      - KAFKA_CFG_MAX_POLL_INTERVAL_MS=630000  # increased
     depends_on:
       - zookeeper
 
   spark-master:
-#    build: spark-build
+    build: spark-build
     image: stream-processing_spark-master:latest
     container_name: spark_master
     env_file:
       - .env
     ports:
-      - '4040:8080'
+      - '9090:8080'
       - "7077:7077"
     entrypoint: spark-submit --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.3.0 /src/stream.py
     volumes:
@@ -108,7 +108,7 @@ services:
       - kafka-server
 
   spark-worker:
-#    build: spark-build
+    build: spark-build
     image: stream-processing_spark-master:latest
     container_name: spark_worker
     environment:
