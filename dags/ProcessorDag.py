@@ -1,25 +1,83 @@
-import os
-from airflow.decorators import dag, task
+# from airflow.decorators import dag, task
 import pendulum
-from src.stream import read_stream_from_kafka
-
-BOOTSTRAP_SERVERS = os.getenv('BOOTSTRAP_SERVERS', default=['kafka:9092'])
-TOPIC_NAME = os.getenv('TOPIC_NAME', default=None)
-
-
-@dag(
-    dag_id="process_data",
-    schedule_interval="* * * * *",
-    start_date=pendulum.datetime(2023, 1, 1, tz="UTC"),
-    catchup=False,
-    is_paused_upon_creation=False
-)
-def process_data_etl():
-    @task
-    def get_stream_data():
-        read_stream_from_kafka()
-
-    get_stream_data()
+from src.ops import retrieve_redis_data, \
+    redis_time_series_to_dataframe, \
+    dump_dataframe_to_postgres, remove_redis_cache_data
+from datetime import timedelta
+# from src.forecasting import train
+from airflow.operators.python import PythonOperator
+from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOperator
+from airflow import DAG
 
 
-data_process_dag = process_data_etl()
+# conf = {"spark.master": master, "spark.app.name": "StreamProcessingDemo",
+
+with DAG(
+        'process_data_for_stream_processing',
+        schedule_interval=timedelta(minutes=3),
+        start_date=pendulum.datetime(2023, 1, 1, tz="UTC"),
+        is_paused_upon_creation=False,
+        catchup=False
+) as dag:
+    get_redis_data_task = PythonOperator(
+        task_id='get_stream_data',
+        python_callable=retrieve_redis_data,
+        op_kwargs={
+            "data_type": "unq_dst_ip"
+        },
+        do_xcom_push=True,
+        dag=dag
+    )
+
+    redis_to_dataframe_task = PythonOperator(
+        task_id="convert_to_dataframe",
+        python_callable=redis_time_series_to_dataframe,
+        op_kwargs={
+            "train_type": "unq_dst_ip"
+        },
+        do_xcom_push=True,
+        dag=dag
+    )
+
+    train_model_task = SparkSubmitOperator(
+        task_id="create_model_with_training",
+        application="/opt/airflow/src/forecasting.py",
+        application_args=["{{ti.xcom_pull(task_ids='convert_to_dataframe')}}", "unq_dst_ip"],
+        conn_id="spark_master",
+        dag=dag
+    )
+
+    dump_to_database_task = PythonOperator(
+        task_id="dump_redis_data_to_postgres",
+        python_callable=dump_dataframe_to_postgres,
+        dag=dag
+    )
+
+    delete_cache_task = PythonOperator(
+        task_id="clean_redis_data",
+        python_callable=remove_redis_cache_data,
+        dag=dag
+    )
+
+    get_redis_data_task >> redis_to_dataframe_task >> [train_model_task, dump_to_database_task] >> delete_cache_task
+
+# @dag(
+#     dag_id="process_data",
+#     schedule_interval="* * * * *",
+#     start_date=pendulum.datetime(2023, 1, 1, tz="UTC"),
+#     catchup=False,
+#     is_paused_upon_creation=True
+# )
+# def process_data_etl():
+#     @task
+#     def get_stream_data():
+#
+#
+#     # @task
+#     # def stream_to_batch_data():
+#     #
+#
+#     get_stream_data()
+#
+#
+# data_process_dag = process_data_etl()
