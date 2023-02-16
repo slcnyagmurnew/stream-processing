@@ -7,3 +7,4 @@ ujson==5.7.0
 pyarrow==9.0.0
 pandas==1.2.1
 redis==4.4.2
+apache-airflow-providers-apache-spark==4.0.0
