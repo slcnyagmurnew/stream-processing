@@ -8,9 +8,10 @@ from prophet.serialize import model_to_json
 import random
 import socket
 import struct
+import re
 
 BASE_LOG_DIR = "/opt/airflow/cl_logs"
-BASE_CONF_DIR = "/opt/airflow/dags"
+BASE_DIR = "/opt/airflow/dags"
 BASE_CONF_FILE_NAME = "config.json"
 OUT_DATA_FILE = "../data/logs.csv"
 IN_DATA_FILE = "../data/f_w_01-07_ctlogs.csv"
@@ -59,6 +60,22 @@ def convert_to_timestamp(data: str):
     """
     return int(time.mktime(datetime.datetime.strptime(data,
                                                       "%Y-%m-%d %H:%M:%S").timetuple()))
+
+
+def concat_models(folder, train_info, save_file='serialized_model.json'):
+    all_dicts = {}
+    for file in os.listdir(folder):
+        full_filename = "%s/%s" % (folder, file)
+        src_ip = re.findall(r'[^\/]+(?=\.)', full_filename)[0]
+        with open(full_filename, 'r') as f:
+            dict = ujson.load(f)
+            all_dicts[src_ip] = dict
+        f.close()
+    all_dicts["train_info"] = train_info
+    with open(save_file, "w") as fp:
+        ujson.dump(all_dicts, fp)
+
+    print('JSON models concatenated and saved into one model successfully..')
 
 
 def create_folder(folder):
@@ -132,7 +149,7 @@ def get_config() -> dict:
     Get global configuration file
     :return: configuration object: dict
     """
-    conf_dir = os.path.join(BASE_CONF_DIR, BASE_CONF_FILE_NAME)
+    conf_dir = os.path.join(BASE_DIR, BASE_CONF_FILE_NAME)
 
     with open(conf_dir, 'r') as f:
         conf = ujson.load(f)
@@ -156,7 +173,7 @@ def update_config():
     new_file = ".".join([str(int(last_file.split(".")[0]) + 1), "json"])
     current_conf["dag_configs"]["last_processed_file"] = new_file
 
-    conf_file = os.path.join(BASE_CONF_DIR, BASE_CONF_FILE_NAME)
+    conf_file = os.path.join(BASE_DIR, BASE_CONF_FILE_NAME)
     with open(conf_file, "w") as f:
         ujson.dump(current_conf, f)
     f.close()
