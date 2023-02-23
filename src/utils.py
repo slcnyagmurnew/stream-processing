@@ -16,6 +16,8 @@ BASE_CONF_FILE_NAME = "config.json"
 OUT_DATA_FILE = "../data/logs.csv"
 IN_DATA_FILE = "../data/f_w_01-07_ctlogs.csv"
 
+SELECTED_DATA = os.getenv("SELECTED_DATA", None)
+
 
 def get_log_data(file_name) -> str:
     """
@@ -100,6 +102,7 @@ def convert():
     generated_ips = create_ip_generation_dict(unq_ip_list=df.src_ip.unique())
     df.sort_values(by=["timestamp"], inplace=True)
     # get generated ip from dictionary (for each row value)
+    df = df[df["src_ip"].isin(SELECTED_DATA)]
     df["src_ip"] = df["src_ip"].apply(replace_with_new_value, args=(generated_ips, ))
     df.to_csv(OUT_DATA_FILE, index=False)  # new data file
 
@@ -107,16 +110,13 @@ def convert():
     reader = csv.DictReader(file, fieldnames=('src_ip', 'unq_dst_ip', 'allow', 'drop',
                                               'frequency', 'pkts_sent', 'pkts_received',
                                               'bytesin', 'bytesout', 'unq_dst_port', 'timestamp'))
-    i, row_count = 0, 30000  # max json file count
+    i = 0  # max json file count
     # split data into small json files (use as stream)
     for row in reader:
         out = ujson.dumps(row)
         out_file = open(f'../cl_logs/{str(i)}.json', 'w')
         out_file.write(out)
-        if i == row_count:
-            break
-        else:
-            i += 1
+        i += 1
 
 
 def map_source_ip_to_partition_number():
@@ -177,5 +177,4 @@ def update_config():
     with open(conf_file, "w") as f:
         ujson.dump(current_conf, f)
     f.close()
-
 
