@@ -14,7 +14,7 @@ from airflow import DAG
 
 with DAG(
         'process_data_for_stream_processing',
-        schedule_interval=timedelta(minutes=3),
+        schedule_interval=timedelta(minutes=10),
         start_date=pendulum.datetime(2023, 1, 1, tz="UTC"),
         is_paused_upon_creation=False,
         catchup=False
