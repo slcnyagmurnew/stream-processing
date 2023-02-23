@@ -128,6 +128,7 @@ def send_to_kafka(data) -> None:
 def init_redis(data_type="unq_dst_ip"):
     """
     Initialize Redis Time Series DB keys with source ips
+    Unique keys with ips
     Example of key-values appearance: {
         "unq_dst_ip_135.131.48.35": [
             {
