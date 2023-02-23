@@ -64,7 +64,7 @@ def train(data, train_type):
     # dataframe = kwargs["ti"].xcom_pull(task_ids='convert_to_dataframe')
     dataframe = pd.read_json(data, orient="columns")
 
-    print(dataframe.empty)
+    print(dataframe)
 
     if not dataframe.empty:
         print(f'dataframe: {dataframe}')
@@ -88,8 +88,8 @@ def train(data, train_type):
 
         results.createOrReplaceTempView('forecasted')
 
-        concat_models(folder=folder_path, train_info=f"Saved date: {g_save_date} Train type: {g_train_type}",
-                      save_file=f"{folder_path}.json")
+        # concat_models(folder=folder_path, train_info=f"Saved date: {g_save_date} Train type: {g_train_type}",
+        #               save_file=f"{folder_path}.json")
         # spark.sql("SELECT ip, count(*) FROM forecasted GROUP BY ip").show()
         final_df = results.toPandas()
         forecast_path = os.path.join(BASE_DIR, "forecasts")
