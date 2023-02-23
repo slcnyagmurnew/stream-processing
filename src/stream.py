@@ -71,6 +71,7 @@ def read_stream_from_kafka():
         .option("kafka.bootstrap.servers", SPARK_KAFKA_SERVER) \
         .option("topic", SPARK_KAFKA_TOPIC) \
         .option("checkpointLocation", "/tmp/checkpoint") \
+        .partitionBy("key") \
         .trigger(processingTime='10 minutes') \
         .outputMode("update") \
         .start() \
