@@ -1,5 +1,5 @@
 from kafka import KafkaProducer, KafkaConsumer, KafkaAdminClient
-from kafka.admin import NewTopic, NewPartitions
+from kafka.admin import NewTopic
 from typing import Dict, List
 import ujson
 import logging
@@ -17,11 +17,13 @@ class KafkaAdapter:
     def produce(self, bootstrap_servers: List, topic_name, data, partition: int):
         producer = KafkaProducer(
             bootstrap_servers=bootstrap_servers,
-            value_serializer=self.value_serializer
+            value_serializer=self.value_serializer,
+            acks='all',
+            retries=3,
         )
         try:
             producer.send(topic=topic_name, value=data, partition=partition)
-            logging.info(f"Data sent to {topic_name}")
+            logging.info(f"Data: {data} Sent to Topic: {topic_name} Partition: {partition}")
 
         except Exception as err:
             logging.error(err)
