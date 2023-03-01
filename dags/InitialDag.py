@@ -1,4 +1,4 @@
-import pendulum
+import airflow
 from src.ops import init_kafka, init_redis
 from airflow.operators.python import PythonOperator
 from airflow import DAG
@@ -6,7 +6,7 @@ from airflow import DAG
 with DAG(
         "init_process_for_stream_processing",
         schedule_interval='@once',
-        start_date=pendulum.datetime(2023, 1, 1, tz="UTC"),
+        start_date=airflow.utils.dates.days_ago(2),
         catchup=False,
         is_paused_upon_creation=False
 ) as dag:

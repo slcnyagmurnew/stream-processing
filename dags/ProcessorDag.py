@@ -1,21 +1,20 @@
 # from airflow.decorators import dag, task
-import pendulum
+import airflow
 from src.ops import retrieve_redis_data, \
     redis_time_series_to_dataframe, \
     dump_dataframe_to_postgres, remove_redis_cache_data
 from datetime import timedelta
-# from src.forecasting import train
 from airflow.operators.python import PythonOperator
 from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOperator
 from airflow import DAG
-
 
 # conf = {"spark.master": master, "spark.app.name": "StreamProcessingDemo",
 
 with DAG(
         'process_data_for_stream_processing',
         schedule_interval=timedelta(minutes=10),
-        start_date=pendulum.datetime(2023, 1, 1, tz="UTC"),
+        start_date=airflow.utils.dates.days_ago(2),
+        max_active_runs=1,
         is_paused_upon_creation=False,
         catchup=False
 ) as dag:

@@ -1,5 +1,5 @@
 from datetime import timedelta
-import pendulum
+import airflow
 from src.utils import get_log_data, get_config, update_config
 from src.ops import redis_connection, send_to_redis, send_to_kafka
 from airflow.operators.python import PythonOperator
@@ -10,7 +10,8 @@ BASE_CONF_DIR = "/opt/airflow/dags"
 with DAG(
         "generate_data_for_stream_processing",
         schedule_interval=timedelta(seconds=20),
-        start_date=pendulum.datetime(2023, 1, 1, tz="UTC"),
+        start_date=airflow.utils.dates.days_ago(2),
+        max_active_runs=1,
         catchup=False,
         is_paused_upon_creation=False
 ) as dag:
