@@ -4,7 +4,7 @@ import pandas as pd
 import ujson
 import time
 import datetime
-from prophet.serialize import model_to_json
+from prophet.serialize import model_to_json, model_from_json
 import random
 import socket
 import struct
@@ -87,7 +87,15 @@ def create_folder(folder):
 def save_model(model, file="serialized_model.json"):
     with open(file, 'w') as fout:
         fout.write(model_to_json(model))  # Save model
+    fout.close()
     print('Model saved successfully..')
+
+
+def load_model(file="serialized_model.json"):
+    with open(file, 'r') as fin:
+        m = model_from_json(fin.read())  # Load model
+    fin.close()
+    return m
 
 
 def convert():
@@ -103,7 +111,7 @@ def convert():
     df.sort_values(by=["timestamp"], inplace=True)
     # get generated ip from dictionary (for each row value)
     df = df[df["src_ip"].isin(SELECTED_DATA)]
-    df["src_ip"] = df["src_ip"].apply(replace_with_new_value, args=(generated_ips, ))
+    df["src_ip"] = df["src_ip"].apply(replace_with_new_value, args=(generated_ips,))
     df.to_csv(OUT_DATA_FILE, index=False)  # new data file
 
     file = open(OUT_DATA_FILE, 'r')
