@@ -4,7 +4,7 @@
 
 ### Workflow
 
-![MarineGEO circle logo](schema/workflow_schema.png "MarineGEO logo")
+![Workflow Schema](schema/workflow_schema.png "Workflow Schema")
 
 
 - **Data Generation**: Data is generated as anonymized data. There are generated source ips that have features merged from real data.
