@@ -147,6 +147,12 @@ services:
     ports:
       - "8001:8001"
 
+  superset:
+    build: superset-build
+    container_name: superset_visualizer
+    ports:
+      - "8088:8088"
+
 
 #  cassandra:
 #    image: 'bitnami/cassandra:latest'
