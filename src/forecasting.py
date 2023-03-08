@@ -3,7 +3,7 @@ import time
 from pyspark.sql import SparkSession
 from pyspark import SparkContext, SparkConf
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 from prophet import Prophet
 from src.utils import create_folder, save_model, load_model
@@ -12,6 +12,8 @@ from pyspark.sql.types import StructType, StructField, DoubleType, TimestampType
 from pyspark.sql.pandas.functions import pandas_udf, PandasUDFType
 import sys
 import numpy as np
+from functools import wraps
+import time
 
 BASE_DIR = "/opt/airflow/dags"
 
@@ -25,15 +27,45 @@ result_schema = StructType([
 ])
 
 
-def save_historical_data_as_dataframe(dataframe: pd.DataFrame, ip: str):
-    """
+def timer(func):
+    @wraps(func)
+    def wrapper(*args):
+        start_time = time.time()
+        retval = func(*args)
+        print("The execution ends in ", time.time() - start_time, "secs")
+        return retval
 
-    :param dataframe:
-    :param ip:
+    return wrapper
+
+
+def add_day_to_hour(date, add_hour=1):
+    """
+    adds given hour to given date
+    :param date:
+    :param add_hour:
     :return:
     """
-    folder_path = os.path.join(BASE_DIR, "history")
-    file_path = os.path.join(folder_path, f"{ip}.csv")
+    updated_time = date + timedelta(hours=add_hour)
+    # print(updated_time, type(updated_time))
+    return updated_time
+
+
+# def arrange_forecast_date(date):
+#     print(f"UPDATE DATE: {date} {date.hour}")
+#     print(add_day_to_hour(date=date, add_hour=((24 - date.hour) + 8)))
+#     return add_day_to_hour(date=date, add_hour=((24 - date.hour) + 8))
+
+
+def save_data_as_dataframe(dataframe: pd.DataFrame, file_name: str, folder_name: str):
+    """
+
+    :param file_name:
+    :param folder_name:
+    :param dataframe:
+    :return:
+    """
+    folder_path = os.path.join(BASE_DIR, folder_name)
+    file_path = os.path.join(folder_path, f"{file_name}.csv")
     dataframe = dataframe.sort_values(by="ds", ascending=True)
     if os.path.exists(file_path):
         df = pd.read_csv(file_path)
@@ -46,6 +78,36 @@ def save_historical_data_as_dataframe(dataframe: pd.DataFrame, ip: str):
         logging.info("Data file created..")
 
 
+def update_future(interval, dataframe, start_hour=8, last_hour=18, max_interval=11):
+    """
+    Check created future dataframe for forecasting whether if its hours is upper last desired hour
+    :param interval: desired future forecast time (exp: 5, 10 in hours)
+    :param dataframe: created future dataframe for each src ip
+    :param start_hour: from hour (exp: start working hour 8, 9)
+    :param last_hour: to hour (exp: end working hour 18, 19)
+    :param max_interval: period of start and end hours (include last hour) (exp: 18-8=11 hours)
+    :return: updated dataframe
+    """
+    if interval > max_interval:
+        return None
+    forecast_data = dataframe.tail(interval)
+    forecast_date = None
+    last_date = None
+    for index, row in forecast_data.iterrows():
+        forecast_date = row['ds']
+        if last_date is not None:
+            new_date = add_day_to_hour(last_date, add_hour=1)
+            dataframe.loc[index, ['ds']] = new_date
+            last_date = new_date
+        else:
+            if forecast_date.hour > last_hour:
+                new_date = add_day_to_hour(forecast_date, add_hour=((24 - forecast_date.hour) + start_hour))
+                dataframe.loc[index, ['ds']] = new_date
+                last_date = new_date
+    return dataframe
+
+
+@timer
 @pandas_udf(result_schema, PandasUDFType.GROUPED_MAP)
 def forecast_ip(history_pd):
     model = Prophet(
@@ -54,22 +116,34 @@ def forecast_ip(history_pd):
         daily_seasonality=True,
         seasonality_mode='multiplicative'
     )
-    # fit the model
-    model.fit(history_pd)
-
     # get fitted src ip to use it model file
     src_ip = history_pd['ip'].iloc[0]
-    save_model(model=model, file=os.path.join(BASE_DIR, f'models/{g_train_type}/{src_ip}.json'))
+
+    # start = time.time()
+    # fit the model
+    ip_model_path = os.path.join(BASE_DIR, f'models/{g_train_type}/{src_ip}.json')
+
+    if os.path.exists(ip_model_path):
+        history_path = os.path.join(BASE_DIR, f"history/{src_ip}.csv")
+        old_model = load_model(ip_model_path)
+        history_data = pd.read_csv(history_path)
+        model.fit(history_data, init=warm_start_params(old_model))
+        logging.info(f"Retraining operation successfully finished..")
+    else:
+        model.fit(history_pd)
+        save_model(model=model, file=ip_model_path)
+        logging.info(f"First training operation successfully finished..")
 
     # configure predictions
     future_pd = model.make_future_dataframe(
-        periods=5,
+        periods=8,
         freq='H',
         include_history=True
     )
 
     # make predictions
     results_pd = model.predict(future_pd)
+    results_pd = update_future(dataframe=results_pd, interval=8)
     f_pd = results_pd[['ds', 'yhat', 'yhat_upper', 'yhat_lower']].set_index('ds')
     st_pd = history_pd[['ds', 'ip', 'y']].set_index('ds')
 
@@ -77,7 +151,8 @@ def forecast_ip(history_pd):
     result_pd.reset_index(level=0, inplace=True)
 
     result_pd['ip'] = history_pd['ip'].iloc[0]
-    save_historical_data_as_dataframe(history_pd, ip=src_ip)  # save old data to retrain model in the future
+    save_data_as_dataframe(history_pd, file_name=src_ip,
+                           folder_name="history")  # save old data to retrain model in the future
     return result_pd[['ds', 'ip', 'y', 'yhat', 'yhat_upper', 'yhat_lower']]
 
 
@@ -110,6 +185,7 @@ def warm_start_params(m):
     return res
 
 
+@timer
 def train(data, train_type):
     global g_save_date
     global g_train_type
@@ -120,33 +196,9 @@ def train(data, train_type):
 
     dataframe["ds"] = dataframe["ds"].apply(lambda x: datetime.fromtimestamp(x))
 
-    if os.path.exists(os.path.join(BASE_DIR, f"models/{train_type}")):
-        start = time.time()
-        dataframe = dataframe.rename(columns={train_type: 'y'})
-        for unq_src_ip in dataframe["ip"].unique():
-            model = Prophet(
-                interval_width=0.95,
-                growth='linear',
-                daily_seasonality=True,
-                seasonality_mode='multiplicative'
-            )
-
-            ip_model_path = os.path.join(BASE_DIR, f"models/{train_type}/{unq_src_ip}.json")
-            old_model = load_model(ip_model_path)
-            history_data = dataframe.loc[dataframe['ip'] == unq_src_ip]
-            print(f"History data for src: {unq_src_ip} -> {history_data}")
-            new_model = model.fit(history_data, init=warm_start_params(old_model))
-
-            save_model(new_model, ip_model_path)
-            save_historical_data_as_dataframe(dataframe=history_data, ip=unq_src_ip)
-
-            logging.info(f"New model for {unq_src_ip} saved successfully..")
-
-        logging.info(f"Retraining operation successfully finished in {time.time() - start} seconds..")
-
-    elif not dataframe.empty:
+    if not dataframe.empty:
         print(f'Dataframe: {dataframe}')
-        start = time.time()
+        # start = time.time()
 
         g_save_date = f"{datetime.now():%y%m%d_%H%M}"
         g_train_type = train_type
@@ -170,11 +222,8 @@ def train(data, train_type):
 
         # spark.sql("SELECT ip, count(*) FROM forecasted GROUP BY ip").show()
         final_df = results.toPandas()
-        forecast_path = os.path.join(BASE_DIR, "forecasts")
-        create_folder(folder=forecast_path)
-        final_df.to_csv(os.path.join(forecast_path, f"{g_save_date}_forecast_{train_type}.csv"), index=False)
-
-        logging.info(f"Training operation successfully finished in {time.time() - start} seconds..")
+        save_data_as_dataframe(final_df, folder_name="forecasts", file_name=f"forecast_{train_type}")
+        logging.info(f"Training operation successfully finished..")
 
     else:
         logging.warning("There is no data for training operation..")
@@ -191,7 +240,7 @@ if __name__ == '__main__':
 
     try:
         print(type(sys.argv[1]))
-        train(data=sys.argv[1], train_type=sys.argv[2])
+        train(sys.argv[1], sys.argv[2])
     except IndexError as err:
         # if sys argv does not come as expected, catch exception
         logging.error(err)
