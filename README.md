@@ -42,7 +42,9 @@ It will be improved adding forecasting visualization with comparing real data an
 <br>
 Example: Visualization of Real Data from PostgreSQL (dumped RTSDB):
 <br>
+
 ![Superset Visualization](schema/superset-example.png "Superset Visualization")
+
   **Note**: It seems graphic has some gaps between data. This is because Airflow duplicates or deletes some messages out of its scheduling mechanism (problem).
 
 #### Notes for me:
