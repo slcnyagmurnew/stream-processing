@@ -1,5 +1,4 @@
 import os.path
-import time
 from pyspark.sql import SparkSession
 from pyspark import SparkContext, SparkConf
 import pandas as pd
@@ -28,6 +27,12 @@ result_schema = StructType([
 
 
 def timer(func):
+    """
+    Calculate function execution time
+    Use as decorator
+    :param func:
+    :return:
+    """
     @wraps(func)
     def wrapper(*args):
         start_time = time.time()
@@ -50,23 +55,20 @@ def add_day_to_hour(date, add_hour=1):
     return updated_time
 
 
-# def arrange_forecast_date(date):
-#     print(f"UPDATE DATE: {date} {date.hour}")
-#     print(add_day_to_hour(date=date, add_hour=((24 - date.hour) + 8)))
-#     return add_day_to_hour(date=date, add_hour=((24 - date.hour) + 8))
-
-
 def save_data_as_dataframe(dataframe: pd.DataFrame, file_name: str, folder_name: str):
     """
-
-    :param file_name:
-    :param folder_name:
-    :param dataframe:
+    Save data function both historical and forecasting data
+    Functionalities:
+        ==> Create csv file if it does not exist
+        ==> Update csv file if it exists
+    :param file_name: save file name
+    :param folder_name: save folder name
+    :param dataframe: save dataframe
     :return:
     """
     folder_path = os.path.join(BASE_DIR, folder_name)
     file_path = os.path.join(folder_path, f"{file_name}.csv")
-    dataframe = dataframe.sort_values(by="ds", ascending=True)
+    dataframe = dataframe.sort_values(by="ds", ascending=True)  # sort data with timestamp
     if os.path.exists(file_path):
         df = pd.read_csv(file_path)
         new_df = pd.concat([df, dataframe], ignore_index=True)
@@ -110,6 +112,12 @@ def update_future(interval, dataframe, start_hour=8, last_hour=18, max_interval=
 @timer
 @pandas_udf(result_schema, PandasUDFType.GROUPED_MAP)
 def forecast_ip(history_pd):
+    """
+    Function that runs for every ip grouped data
+    Prophet model is created and used for forecasting
+    :param history_pd: specified ip data
+    :return:
+    """
     model = Prophet(
         interval_width=0.95,
         growth='linear',
@@ -119,22 +127,21 @@ def forecast_ip(history_pd):
     # get fitted src ip to use it model file
     src_ip = history_pd['ip'].iloc[0]
 
-    # start = time.time()
     # fit the model
     ip_model_path = os.path.join(BASE_DIR, f'models/{g_train_type}/{src_ip}.json')
 
-    if os.path.exists(ip_model_path):
+    if os.path.exists(ip_model_path):  # retrain model if there is older one
         history_path = os.path.join(BASE_DIR, f"history/{src_ip}.csv")
         old_model = load_model(ip_model_path)
         history_data = pd.read_csv(history_path)
         model.fit(history_data, init=warm_start_params(old_model))
         logging.info(f"Retraining operation successfully finished..")
-    else:
+    else:  # train model for first time
         model.fit(history_pd)
         save_model(model=model, file=ip_model_path)
         logging.info(f"First training operation successfully finished..")
 
-    # configure predictions
+    # configure predictions, forecast 8 hours
     future_pd = model.make_future_dataframe(
         periods=8,
         freq='H',
@@ -187,14 +194,20 @@ def warm_start_params(m):
 
 @timer
 def train(data, train_type):
+    """
+    Train Prophet models according to ip data and train type
+    :param data: specified ip data
+    :param train_type: column name for training
+    :return:
+    """
     global g_save_date
     global g_train_type
 
     print(data)
     # dataframe = kwargs["ti"].xcom_pull(task_ids='convert_to_dataframe')
-    dataframe = pd.read_json(data, orient="columns")
+    dataframe = pd.read_json(data, orient="columns")  # get data from convert_to_dataframe task
 
-    dataframe["ds"] = dataframe["ds"].apply(lambda x: datetime.fromtimestamp(x))
+    dataframe["ds"] = dataframe["ds"].apply(lambda x: datetime.fromtimestamp(x))  # convert epoch time to timestamp
 
     if not dataframe.empty:
         print(f'Dataframe: {dataframe}')
@@ -225,7 +238,7 @@ def train(data, train_type):
         save_data_as_dataframe(final_df, folder_name="forecasts", file_name=f"forecast_{train_type}")
         logging.info(f"Training operation successfully finished..")
 
-    else:
+    else:  # if dataframe is empty
         logging.warning("There is no data for training operation..")
 
 

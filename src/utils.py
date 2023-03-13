@@ -8,7 +8,6 @@ from prophet.serialize import model_to_json, model_from_json
 import random
 import socket
 import struct
-import re
 
 BASE_LOG_DIR = "/opt/airflow/cl_logs"
 BASE_DIR = "/opt/airflow/dags"
@@ -64,27 +63,22 @@ def convert_to_timestamp(data: str):
                                                       "%Y-%m-%d %H:%M:%S").timetuple()))
 
 
-def concat_models(folder, train_info, save_file='serialized_model.json'):
-    all_dicts = {}
-    for file in os.listdir(folder):
-        full_filename = "%s/%s" % (folder, file)
-        src_ip = re.findall(r'[^\/]+(?=\.)', full_filename)[0]
-        with open(full_filename, 'r') as f:
-            dict = ujson.load(f)
-            all_dicts[src_ip] = dict
-        f.close()
-    all_dicts["train_info"] = train_info
-    with open(save_file, "w") as fp:
-        ujson.dump(all_dicts, fp)
-
-    print('JSON models concatenated and saved into one model successfully..')
-
-
 def create_folder(folder):
+    """
+    Create folder if it does not exist
+    :param folder: folder name
+    :return:
+    """
     os.makedirs(folder, exist_ok=True)
 
 
 def save_model(model, file="serialized_model.json"):
+    """
+    Save Prophet model with using Prophet`s model_to_json function
+    :param model: Prophet model object
+    :param file: name of file
+    :return:
+    """
     with open(file, 'w') as fout:
         fout.write(model_to_json(model))  # Save model
     fout.close()
@@ -92,6 +86,11 @@ def save_model(model, file="serialized_model.json"):
 
 
 def load_model(file="serialized_model.json"):
+    """
+    Get existing Prophet model with using Prophet`s model_from_json function
+    :param file: name of file
+    :return:
+    """
     with open(file, 'r') as fin:
         m = model_from_json(fin.read())  # Load model
     fin.close()
@@ -102,6 +101,7 @@ def convert():
     """
     Method for creating json files shown as stream data from csv file
     Change column values for security
+    !!! This function is not used in flow of the project !!!
     :return:
     """
 
@@ -176,9 +176,13 @@ def replace_with_new_value(old_ip: str, new_ip_dict: dict) -> str:
 
 
 def update_config():
+    """
+    Update last_processed_file field in config.json file after processing of one json file
+    :return:
+    """
     current_conf = get_config()
     last_file = current_conf["dag_configs"]["last_processed_file"]
-    new_file = ".".join([str(int(last_file.split(".")[0]) + 1), "json"])
+    new_file = ".".join([str(int(last_file.split(".")[0]) + 1), "json"])  # increase the # of file
     current_conf["dag_configs"]["last_processed_file"] = new_file
 
     conf_file = os.path.join(BASE_DIR, BASE_CONF_FILE_NAME)

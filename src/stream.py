@@ -1,7 +1,7 @@
 import os
 from pyspark.sql import SparkSession
 from pyspark.sql.types import StructType, StructField, StringType
-from pyspark.sql.functions import from_json, col, avg, to_json
+from pyspark.sql.functions import from_json, col, avg
 
 SPARK_KAFKA_SERVER = os.getenv("SPARK_KAFKA_SERVER", default="kafka:9092")
 SPARK_KAFKA_TOPIC = os.getenv("SPARK_KAFKA_TOPIC", default=None)
@@ -36,6 +36,11 @@ struct = StructType(
 
 
 def read_stream_from_kafka():
+    """
+    Main function of Spark Streaming process
+    Read stream from LogTopic and write averages of ip keys with grouping to SparkStreamingTopic
+    :return:
+    """
     sdf = spark \
         .readStream \
         .format("kafka") \

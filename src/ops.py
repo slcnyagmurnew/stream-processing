@@ -189,7 +189,12 @@ def redis_connection():
 
 
 def dump_dataframe_to_postgres(**kwargs):
-
+    """
+    Redis Time Series Database to Postgres database
+    Get dataframe from convert_to_dataframe task
+    :param kwargs: dataframe (in json format)
+    :return:
+    """
     data = kwargs["ti"].xcom_pull(task_ids='convert_to_dataframe')  # dataframe in JSON string
     df = pd.read_json(data, orient="columns")  # convert JSON to Pandas dataframe
 
