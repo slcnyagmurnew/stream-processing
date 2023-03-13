@@ -47,21 +47,23 @@ Example: Visualization of Real Data from PostgreSQL (dumped RTSDB):
 
   **Note**: It seems graphic has some gaps between data. This is because Airflow duplicates or deletes some messages out of its scheduling mechanism (problem).
 
-#### Notes for me:
-For using **'postgres'** from *'airflow.providers'*:
+
+### Configuration Notes
+
+Bitnami's Docker distributions are used for Kafka and Spark containers. In previous attempts with other publishers like official and Confluent, Spark Streaming-Kafka connection **did not work**.
+
+**example_files** folder can be used to understand data format and if desired, the number of data can be increased, because it must be sufficient to run Prophet model properly.
+Please change the folder name to **cl_logs**.
+
+In **.env** file, Airflow, Spark, Kafka, Kafka Visualizer and Postgres containers have some important configurations. *SELECTED_DATA* contained list of original data part before the anonymized data was constructed.
+So, it does not need to be visible.
+
+### Run
+
+For the system to work:
 
 ```angular2html
-pip install apache-airflow[postgres]
+docker-compose up -d --build
 ```
 
-Uncomment
-```angular2html
-#    - ./logs:/opt/airflow/logs
-#    - ./plugins:/opt/airflow/plugins
-``` 
-rows in docker-compose.yml to see logging from Kafka. Otherwise, it gives secret_key error not matching (Kafka can not find logs directory).
-
-If custom airflow image does not exist, build it first with uncomment
-```angular2html
-#  build: .
-```
+Build operation is required in first run. 
