@@ -1,6 +1,10 @@
 ## Stream Processing with Spark-Streaming, Kafka, Redis and Airflow
 
-#### In this study, data is simulated as near-real streaming data.
+
+### About
+
+The main purpose of this project is creating streaming flow with analyzing randomly generated IPs matched different behaviors of real IPs. This study includes **analysis**, **forecasting** and **anomaly detection** on **time series data**.
+
 
 ### Workflow
 
@@ -26,12 +30,12 @@ After sending, next data file name is written to **config.json** file.
   
 
 - **Data Distribution and Processing**: There are two third-party tools for data distribution: **Kafka** and **Redis**. <br><br>
-  - **Kafka**: Each data has **different partitions** in one Kafka topic. There is ip-partition map was done before running application.
+  - **Kafka**: Each data has **different partitions** according to their IP in one Kafka topic. There is ip-partition map was done before running application.
   Kafka data is used by **Spark Streaming**. Spark master and worker containers always listen the **LogTopic** and collect data with complete mode so
-  data is never lost. Then, Spark uses another Kafka topic called **SparkStreamingTopic** to write average of _unq_dst_ip_ feature 
+  data is never lost. Then, Spark uses another Kafka topic called **SparkStreamingTopic** to write **average** of _unq_dst_ip_ feature 
   for collected data of each ip, and also they are in different partitions in the topic. <br> <br>
 
-  - **Redis Time Series Database (RTSDB)**: Each ip based data is sent to related key of database, they are separated. The data is used for time series forecasting 
+  - **Redis Time Series Database (RTSDB)**: Each IP based data is sent to related key of database, they are separated. The data is used for time series forecasting 
   with **Facebook Prophet** model. Thanks to Prophet's work with **Spark** parallelization and grouping, each data has its own forecasting model.
   After training operation finished, RTSDB is cleaned to prevent overloading of cache mechanism. Training is scheduled with **Airflow**
   and historical data (which is cleaned from RTSDB) is dumped to **PostgreSQL Database** for consistency of data. 
