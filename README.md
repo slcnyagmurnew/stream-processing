@@ -58,6 +58,23 @@ Please change the folder name to **cl_logs**.
 In **.env** file, Airflow, Spark, Kafka, Kafka Visualizer and Postgres containers have some important configurations. *SELECTED_DATA* contained list of original data part before the anonymized data was constructed.
 So, it does not need to be visible.
 
+#### Docker Services and Port Mappings:
+
+- Airflow &rarr; **8080**
+- Kafka &rarr; **9092**
+- Spark
+  - Master &rarr; **7077**
+  - Internal &rarr; **8080**
+  - External &rarr; **9090**
+- Kafdrop (Kafka Visualizer) &rarr; **9000**
+- Redis &rarr; **6379**
+- Redis Insight &rarr; **8001**
+- Superset &rarr; **8088**
+- Zookeeper &rarr; **2181**
+- Postgres
+  - Internal &rarr; **5432**
+  - External &rarr; **5434**
+
 ### Run
 
 For the system to work:
