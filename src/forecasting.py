@@ -5,7 +5,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 import logging
 from prophet import Prophet
-from src.utils import create_folder, save_model, load_model
+from src.utils import create_folder, save_model
 from pyspark.sql.functions import current_date
 from pyspark.sql.types import StructType, StructField, DoubleType, TimestampType, StringType
 from pyspark.sql.pandas.functions import pandas_udf, PandasUDFType
@@ -55,12 +55,58 @@ def add_day_to_hour(date, add_hour=1):
     return updated_time
 
 
+def update_y_column(row, dataframe: pd.DataFrame):
+    """
+    While adding new forecasting data to existing (old) forecasting file,
+    update 'null' y values with obtained real y values keeping yhat, ylower, yupper values as the same.
+        - If y value is not 'null', do not change it because it is real value of its timestamp and ip.
+        - If there is no data matched 'ds' and 'ip' columns, try statement will throw IndexError. (handled)
+    :param row: each row of the old forecasting file
+    :param dataframe: new dataframe obtained after Prophet forecasting
+    :return: updated y value of the row
+    """
+    if np.isnan(row["y"]):
+        try:
+            return dataframe.loc[(dataframe["ds"] == row["ds"]) & (dataframe["ip"] == row["ip"]), "y"].iloc[0]
+        except IndexError:
+            return None
+    else:
+        return row["y"]
+
+
+def add_forecast_to_dataframe(dataframe, folder_name, file_name):
+    """
+    Merge all forecasting and real values into one dataframe
+    If there is no existing forecast file, create csv file
+    If there is existing forecast file:
+        - Apply update_y_column function to all rows
+        - Add forecasted part of the new dataframe to the existing dataframe
+    :param dataframe: new dataframe obtained from Redis Time Series Database
+    :param folder_name: forecasting folder name
+    :param file_name: forecasting file name (under the folder name)
+    :return:
+    """
+    folder_path = os.path.join(BASE_DIR, folder_name)
+    file_path = os.path.join(folder_path, f"{file_name}.csv")
+    if os.path.exists(file_path):
+        df = pd.read_csv(file_path)
+        df['ds'] = pd.to_datetime(df['ds'], infer_datetime_format=True)
+        df["y"] = df.apply(lambda x: update_y_column(row=x, dataframe=dataframe), axis=1)
+        merged_df = pd.concat([df, dataframe[dataframe["y"].isna()]])
+        merged_df.to_csv(file_path, index=False)
+        logging.info("Forecasting file updated..")
+    else:
+        create_folder(folder=folder_path)
+        dataframe.to_csv(file_path, index=False)
+        logging.info("Forecasting file created..")
+
+
 def save_data_as_dataframe(dataframe: pd.DataFrame, file_name: str, folder_name: str):
     """
-    Save data function both historical and forecasting data
+    Save data function for historical data
     Functionalities:
-        ==> Create csv file if it does not exist
-        ==> Update csv file if it exists
+        - Create csv file if it does not exist
+        - Update csv file if it exists
     :param file_name: save file name
     :param folder_name: save folder name
     :param dataframe: save dataframe
@@ -130,27 +176,20 @@ def forecast_ip(history_pd):
     # fit the model
     ip_model_path = os.path.join(BASE_DIR, f'models/{g_train_type}/{src_ip}.json')
 
-    if os.path.exists(ip_model_path):  # retrain model if there is older one
-        history_path = os.path.join(BASE_DIR, f"history/{src_ip}.csv")
-        old_model = load_model(ip_model_path)
-        history_data = pd.read_csv(history_path)
-        model.fit(history_data, init=warm_start_params(old_model))
-        logging.info(f"Retraining operation successfully finished..")
-    else:  # train model for first time
-        model.fit(history_pd)
-        save_model(model=model, file=ip_model_path)
-        logging.info(f"First training operation successfully finished..")
+    model.fit(history_pd)
+    save_model(model=model, file=ip_model_path)
+    logging.info(f"Training operation successfully finished..")
 
     # configure predictions, forecast 8 hours
     future_pd = model.make_future_dataframe(
         periods=8,
-        freq='H',
-        include_history=True
+        freq='H'
     )
-
+    print(f"Future pd: {future_pd}")
     # make predictions
     results_pd = model.predict(future_pd)
     results_pd = update_future(dataframe=results_pd, interval=8)
+    print(f"Result pd: {results_pd}")
     f_pd = results_pd[['ds', 'yhat', 'yhat_upper', 'yhat_lower']].set_index('ds')
     st_pd = history_pd[['ds', 'ip', 'y']].set_index('ds')
 
@@ -161,35 +200,6 @@ def forecast_ip(history_pd):
     save_data_as_dataframe(history_pd, file_name=src_ip,
                            folder_name="history")  # save old data to retrain model in the future
     return result_pd[['ds', 'ip', 'y', 'yhat', 'yhat_upper', 'yhat_lower']]
-
-
-def warm_start_params(m):
-    """
-    Retrieve parameters from a trained model in the format used to initialize a new Stan model.
-    Note that the new Stan model must have these same settings:
-        n_changepoints, seasonality features, mcmc sampling
-    for the retrieved parameters to be valid for the new model.
-
-    Parameters
-    ----------
-    m: A trained model of the Prophet class.
-
-    Returns
-    -------
-    A Dictionary containing retrieved parameters of m.
-    """
-    res = {}
-    for pname in ['k', 'm', 'sigma_obs']:
-        if m.mcmc_samples == 0:
-            res[pname] = m.params[pname][0][0]
-        else:
-            res[pname] = np.mean(m.params[pname])
-    for pname in ['delta', 'beta']:
-        if m.mcmc_samples == 0:
-            res[pname] = m.params[pname][0]
-        else:
-            res[pname] = np.mean(m.params[pname], axis=0)
-    return res
 
 
 @timer
@@ -235,7 +245,8 @@ def train(data, train_type):
 
         # spark.sql("SELECT ip, count(*) FROM forecasted GROUP BY ip").show()
         final_df = results.toPandas()
-        save_data_as_dataframe(final_df, folder_name="forecasts", file_name=f"forecast_{train_type}")
+        print(f"Final df : {final_df}")
+        add_forecast_to_dataframe(final_df, folder_name="forecasts", file_name=f"forecast_{train_type}")
         logging.info(f"Training operation successfully finished..")
 
     else:  # if dataframe is empty
