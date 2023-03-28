@@ -34,11 +34,19 @@ After sending, next data file name is written to **config.json** file.
   Kafka data is used by **Spark Streaming**. Spark master and worker containers always listen the **LogTopic** and collect data with complete mode so
   data is never lost. Then, Spark uses another Kafka topic called **SparkStreamingTopic** to write **average** of _unq_dst_ip_ feature 
   for collected data of each ip, and also they are in different partitions in the topic. <br> <br>
+  
+  Example: Kafka partitions after the first two data of each IP is sent: <br> <br>
+
+  ![Kafka Visualization](schema/kafdrop-example.png "Kafka Visualization") <br> <br>
 
   - **Redis Time Series Database (RTSDB)**: Each IP based data is sent to related key of database, they are separated. The data is used for time series forecasting 
   with **Facebook Prophet** model. Thanks to Prophet's work with **Spark** parallelization and grouping, each data has its own forecasting model.
   After training operation finished, RTSDB is cleaned to prevent overloading of cache mechanism. Training is scheduled with **Airflow**
-  and historical data (which is cleaned from RTSDB) is dumped to **PostgreSQL Database** for consistency of data. 
+  and historical data (which is cleaned from RTSDB) is dumped to **PostgreSQL Database** for consistency of data. <br> <br>
+
+  Example: RTSDB before periodic cleaning of the data: <br> <br>
+
+  ![RTSDB Visualization](schema/rtsdb-example.png "RTSDB Visualization") <br> <br>
 
 
 - **Data Visualization**: Currently, **Apache Superset** service that has PostgreSQL package installed via Dockerfile has been added to Docker environment. 
