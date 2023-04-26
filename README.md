@@ -70,6 +70,8 @@ Clone operation automatically creates **empty cl_logs** folder. Please delete it
 In **.env** file, Airflow, Spark, Kafka, Kafka Visualizer and Postgres containers have some important configurations. *SELECTED_DATA* contained list of original data part before the anonymized data was constructed.
 So, it does not need to be visible.
 
+Source ip-partition number mapping is created using **utils/map_source_ip_to_partition_number** function and if desired, data could be increased with creation of JSON files consists new IP data. Please use this function over the **data/logs.csv** file (with new data) and add same data entries into **cl_logs** folder as a JSON file to increase number of unique source ips in this flow.
+
 #### Docker Services and Port Mappings:
 
 - Airflow &rarr; **8080**
