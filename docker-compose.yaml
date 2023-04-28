@@ -88,7 +88,7 @@ services:
       - KAFKA_CFG_ZOOKEEPER_CONNECT=zookeeper:2181
       - ALLOW_PLAINTEXT_LISTENER=yes
       - KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE=false
-      - KAFKA_CFG_MAX_POLL_INTERVAL_MS=630000  # increased
+      - KAFKA_CFG_MAX_POLL_INTERVAL_MS=1500000  # increased
     depends_on:
       - zookeeper
 
