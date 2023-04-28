@@ -12,7 +12,7 @@ from airflow import DAG
 
 with DAG(
         'process_data_for_stream_processing',
-        schedule_interval=timedelta(minutes=10),
+        schedule_interval=timedelta(minutes=20),
         start_date=airflow.utils.dates.days_ago(2),
         max_active_runs=1,
         is_paused_upon_creation=False,
@@ -46,6 +46,13 @@ with DAG(
         dag=dag
     )
 
+    spark_ml_task = SparkSubmitOperator(
+        task_id="create_model_with_spark_ml",
+        application="/opt/airflow/src/sparkml.py",
+        conn_id="spark_master",
+        dag=dag
+    )
+
     dump_to_database_task = PythonOperator(
         task_id="dump_redis_data_to_postgres",
         python_callable=dump_dataframe_to_postgres,
@@ -58,7 +65,7 @@ with DAG(
         dag=dag
     )
 
-    get_redis_data_task >> redis_to_dataframe_task >> [train_model_task, dump_to_database_task] >> delete_cache_task
+    get_redis_data_task >> redis_to_dataframe_task >> [train_model_task, dump_to_database_task] >> spark_ml_task >> delete_cache_task
 
 # @dag(
 #     dag_id="process_data",
