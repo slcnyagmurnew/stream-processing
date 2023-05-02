@@ -11,6 +11,7 @@ x-common:
     - ./logs:/opt/airflow/logs
     - ./cl_logs:/opt/airflow/cl_logs
     - ./src:/opt/airflow/src
+    - ./data:/opt/airflow/data
     - /var/run/docker.sock:/var/run/docker.sock
 
 x-depends-on:
@@ -99,8 +100,9 @@ services:
     env_file:
       - .env
     ports:
-      - '9090:8080'
+      - "9090:8080"
       - "7077:7077"
+      - "4040:4040"
     entrypoint: spark-submit --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.3.0 /src/stream.py
     volumes:
       - ./src:/src:rw
