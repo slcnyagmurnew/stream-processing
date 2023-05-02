@@ -1,12 +1,13 @@
-import glob
 from pyspark.context import SparkContext, SparkConf
 from pyspark.ml.regression import GBTRegressor
-from pyspark.sql.types import StructType, StructField, StringType
+from pyspark.ml.evaluation import RegressionEvaluator
+from pyspark.sql.types import StructType, StructField, StringType, IntegerType, TimestampType
 from pyspark.sql import Window as w
 from pyspark.ml.feature import VectorAssembler, StringIndexer, OneHotEncoder
 from pyspark.sql import SparkSession
-import pandas as pd
 import os
+from utils import create_folder
+from pyspark.ml import Pipeline
 from KafkaAdapter import KafkaAdapter
 from pyspark.sql.functions import lag
 
@@ -14,85 +15,113 @@ SPARK_KAFKA_SERVER = os.getenv("SPARK_KAFKA_SERVER", default="kafka:9092")
 TOPIC_NAME = os.getenv("TOPIC_NAME", default=None)
 adapter = KafkaAdapter()
 
+BASE_DIR = "/opt/airflow/src"
+global model_path
+
 struct = StructType(
     [
-        StructField("ip", StringType()),
-        StructField("ds", StringType()),
-        StructField("y", StringType())
+        StructField("src_ip", StringType()),
+        StructField("unq_dst_ip", IntegerType()),
+        StructField("allow", IntegerType()),
+        StructField("drop", IntegerType()),
+        StructField("frequency", IntegerType()),
+        StructField("pkts_sent", IntegerType()),
+        StructField("pkts_received", IntegerType()),
+        StructField("bytesin", IntegerType()),
+        StructField("bytesout", IntegerType()),
+        StructField("unq_dst_port", IntegerType()),
+        StructField("timestamp", TimestampType())
     ]
 )
 
 
-def concat_ip_histories(folder_name):
-    files = glob.glob(folder_name + "/*.csv")
-    if not files:
-        print("Could not find any history of data..")
-    else:
-        dataframe = pd.DataFrame(columns=["ip", "ds", "y"])
-        for file in files:
-            dataframe = pd.concat([dataframe, pd.read_csv(file)], ignore_index=True)
-        print(f"Concatenated history dataframe: {dataframe}")
-        dataframe.to_csv("/opt/airflow/dags/raw_data.csv", index=False)
+def eval_metrics(pred):
+    """
+    Evaluate GBT Regression model
+    Calculate RMSE and MAE scores for predicted data
+    :param pred:
+    :return:
+    """
+    rmse_calc = RegressionEvaluator(
+        metricName="rmse",
+        predictionCol="prediction",
+        labelCol="unq_dst_ip"
+    )
+
+    mae_calc = RegressionEvaluator(
+        metricName="mae",
+        predictionCol="prediction",
+        labelCol="unq_dst_ip"
+    )
+
+    rmse_score = rmse_calc.evaluate(pred)
+    mae_score = mae_calc.evaluate(pred)
+
+    print(f"RMSE Score: {rmse_score}")
+    print(f"MAE Score: {mae_score}")
 
 
-def create_spark_ml(prev_col_name="prevHourUnqDstIp"):
-    if os.path.exists("/opt/airflow/dags/raw_data.csv"):
-        sdf = spark \
-            .read \
-            .format("csv") \
-            .schema(schema=struct) \
-            .option("header", True) \
-            .option("timestampFormat", 'yyyy/MM/dd hh:mm:ss') \
-            .load("/opt/airflow/dags/raw_data.csv")
+def create_spark_ml(prev_col_name="prev_unq_dst_ip"):
+    """
+    Create Spark ML pipeline for existing log data (in csv format)
+    It is assumed that data file always changes (in my case data does not change, no data flow exists)
+    Or windowing function can be implemented to data (ignoring past data, focusing new data etc.)
+    :param prev_col_name: lag function used in this column
+    :return:
+    """
+    sdf = spark \
+        .read \
+        .format("csv") \
+        .schema(schema=struct) \
+        .option("header", True) \
+        .option("timestampFormat", 'yyyy-MM-dd hh:mm:ss') \
+        .load("/opt/airflow/data/logs.csv")
 
-        print(sdf)
+    print(sdf)
 
-        sdf.printSchema()
+    sdf.printSchema()
 
-        # dataframe = pd.read_json(data, orient="columns")  # get data from convert_to_dataframe task
-        #
-        # sdf = spark.createDataFrame(data=dataframe)
-        sdf = sdf.withColumn(prev_col_name, lag("y")
-                             .over(w.partitionBy("ip")
-                                   .orderBy(["ds"])))
-        print("MODEL DATA:")
-        sdf.show(50)
-        print(f"Model data: {sdf}")
+    sdf = sdf.withColumn(prev_col_name, lag("unq_dst_ip")
+                         .over(w.partitionBy("src_ip").orderBy(
+        ["timestamp"])))  # group by src ip and add previous value as a new column with lag function
 
-        indexer = StringIndexer(inputCol="ip", outputCol="ipNum")
-        index_data = indexer.fit(sdf).transform(sdf)  # convert categorical data into numerical
+    sdf.show(50)
 
-        print(index_data)
-        print("INDEX DATA:")
-        index_data.show(50)
+    (train, test) = sdf.randomSplit([0.75, 0.25])
 
-        encoder = OneHotEncoder(inputCol="ipNum", outputCol="ipVec")
-        ohe_data = encoder.fit(index_data).transform(index_data)
-        ohe_data.show(50)
+    indexer = StringIndexer(inputCol="src_ip", outputCol="ip_num",
+                            handleInvalid='keep')  # convert categorical data into numerical
 
-        vector_assembler = VectorAssembler(
-            inputCols=["ipNum", "ds", prev_col_name],
-            outputCol="features"
-        )
-        out_data = vector_assembler.transform(ohe_data)
-        out_data.show(50)
+    # index_data.show(50)
 
-        (train, test) = out_data.randomSplit([0.75, 0.25])
+    encoder = OneHotEncoder(inputCol="ip_num", outputCol="ip_vec")
 
-        gbt = GBTRegressor(featuresCol="features", labelCol="y")
-        model = gbt.fit(train)
-        pred = model.transform(dataset=test)
-        print(f"Predictions: {pred}")
-    else:
-        print("Could not find 'raw_data.csv' file..")
+    vector_assembler = VectorAssembler(
+        inputCols=["ip_vec", prev_col_name, "allow", "drop", "frequency", "pkts_sent",
+                   "pkts_received", "bytesin", "bytesout", "unq_dst_port"],
+        outputCol="features"  # include all columns except timestamp as feature
+    )
+    vector_assembler.setHandleInvalid("skip")  # Spark throws error when there is null value, so skip them
+
+    # out_data.show(50)
+    gbt = GBTRegressor(featuresCol="features", labelCol="unq_dst_ip")
+
+    pipeline = Pipeline(stages=[indexer, encoder, vector_assembler, gbt])  # create pipeline
+
+    model = pipeline.fit(train)
+
+    model.write().overwrite().save(model_path)  # if path exists, Spark throws error without overwrite function
+
+    pred = model.transform(dataset=test)
+    eval_metrics(pred=pred)
+    pred.show(50)
 
 
 if __name__ == '__main__':
     sc = SparkContext(conf=SparkConf().setMaster("local"))
     spark = SparkSession \
         .builder \
-        .config("spark.ui.port", "9090") \
         .appName('SparkMLDemo').getOrCreate()
-    concat_ip_histories(folder_name="/opt/airflow/dags/history")
+    model_path = os.path.join(BASE_DIR, "model")
+    create_folder(folder=model_path)
     create_spark_ml()
-    spark.stop()
