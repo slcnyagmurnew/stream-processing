@@ -8,3 +8,4 @@ RUN pip install -r /requirements.txt
 EXPOSE 8080
 EXPOSE 9090
 EXPOSE 7077
+EXPOSE 4040
