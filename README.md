@@ -15,7 +15,7 @@ The main purpose of this project is creating streaming flow with analyzing rando
   - **Redis Time Series Database (RTSDB)**: Fields are created using IPs and training column types (unq_dst_ip, frequency etc.) as keys in RTSDB.
 
   <br>
-- **Data Generation**: Data is generated as anonymized data. There are generated source ips that have features merged from real data.
+- **Data Generation** (SenderDAG): Data is generated as anonymized data. There are generated source ips that have features merged from real data.
 Each data takes place in a single JSON file. These files are sent to relevant tools via Airflow DAG.
 After sending, next data file name is written to **config.json** file.
 
@@ -29,7 +29,7 @@ After sending, next data file name is written to **config.json** file.
   &nbsp;} <br>
   
 
-- **Data Distribution and Processing**: There are two third-party tools for data distribution: **Kafka** and **Redis**. <br><br>
+- **Data Distribution and Processing** (ProcessorDAG): There are two third-party tools for data distribution: **Kafka** and **Redis**. <br><br>
   - **Kafka**: Each data has **different partitions** according to their IP in one Kafka topic. There is ip-partition map was done before running application.
   Kafka data is used by **Spark Streaming**. Spark master and worker containers always listen the **LogTopic** and collect data with complete mode so
   data is never lost. Then, Spark uses another Kafka topic called **SparkStreamingTopic** to write **average** of _unq_dst_ip_ feature 
@@ -48,6 +48,9 @@ After sending, next data file name is written to **config.json** file.
 
   ![RTSDB Visualization](schema/rtsdb-example.png "RTSDB Visualization") <br> <br>
 
+
+**Spark ML** pipeline is also added to Processor DAG as a task to use GBT Regression model in forecasting desired IP feature. 
+Generated ML model is saved into **src/model** directory with pipeline stages. (There is no exact data flow, so it can be assumed that **logs.csv** file always be updated via data flow)
 
 - **Data Visualization**: Currently, **Apache Superset** service that has PostgreSQL package installed via Dockerfile has been added to Docker environment. 
 It will be improved adding forecasting visualization with comparing real data and forecasted data. <br>
