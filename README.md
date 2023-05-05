@@ -68,7 +68,8 @@ Example: Visualization of Real Data from PostgreSQL (dumped RTSDB):
 Bitnami's Docker distributions are used for Kafka and Spark containers. In previous attempts with other publishers like official and Confluent, Spark Streaming-Kafka connection **did not work**.
 
 **example_files** folder can be used to understand data format and if desired, the number of data can be increased, because it must be sufficient to run Prophet model properly.
-Clone operation automatically creates **empty cl_logs** folder. Please delete it and change the folder name **example_files** to **cl_logs**.
+Clone operation automatically creates **empty cl_logs** folder. Please delete it and change the folder name **example_files** to **cl_logs**. Also, to get meaningful results in 
+forecasting, remove **dags/forecasts**, **dags/models** and **dags/history** folders.
 
 In **.env** file, Airflow, Spark, Kafka, Kafka Visualizer and Postgres containers have some important configurations. *SELECTED_DATA* contained list of original data part before the anonymized data was constructed.
 So, it does not need to be visible.
